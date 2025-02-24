@@ -24,6 +24,100 @@ const getHostPortFromString = function (hostString, defaultPort) {
 };
 
 const Proxy = {
+
+    /**
+     * 
+     * @param {string} port 
+     * @param {string[]} proxyList
+     * @returns {Promise<void>} 
+     */
+    multiTargetStart: (port, proxyList) => {
+        let currentIndex = 0
+        const instaceList = proxyList.map(proxy => {
+            return {
+                agent: new HttpsProxyAgent(proxy),
+                uri: proxy
+            }
+        })
+        const getProxy = () => {
+            let instance = instaceList[currentIndex]
+            if (!instance) {
+                currentIndex = 0
+                instance = instaceList[0]
+            }
+            currentIndex += 1
+            // console.log('Proxy', instance)
+            return instance
+        }
+
+        const promise = CreatePendingPromise()
+        const server = http.createServer(function (req, res) {
+            const proxyTarget = getProxy()
+            const urlObj = url.parse(req.url);
+            const target = urlObj.protocol + "//" + urlObj.host;
+
+            console.log("Proxy HTTP request for:", target);
+
+            const proxy = httpProxy.createProxyServer({});
+            proxy.on("error", function (err, req, res) {
+                console.log("proxy error", err);
+                res.end();
+            });
+
+            proxy.web(req, res, { target: target, agent: proxyTarget.agent });
+        }).listen(port, () => promise.resolver());  //this is the port your clients will connect to
+
+
+
+        server.addListener('connect', function (clientReq, clientSocket, bodyhead) {
+            const hostPort = getHostPortFromString(clientReq.url, 443);
+            const hostDomain = hostPort[0];
+            const port = parseInt(hostPort[1]);
+            console.log("Proxying HTTPS request for:", hostDomain, port);
+            const proxyTarget = getProxy()
+            const agent = proxyTarget.agent
+            const proxyUri = agent.proxy
+            const options = {
+                port: parseInt(proxyUri.port),
+                hostname: proxyUri.hostname,
+                method: 'CONNECT',
+                path: `${hostDomain}:${port}`,
+                headers: {
+                    'proxy-authorization': 'Basic ' + Buffer.from(`${proxyUri.username}:${proxyUri.password}`).toString('base64')
+                }
+            }
+            const proxySocket = http.request(options)
+            // proxySocket.end()
+            proxySocket.end()
+            proxySocket.on("connect", (res, socket, head) => {
+                // make a request over an HTTP tunnel
+                // console.log(res)
+                clientSocket.write(
+                    "HTTP/" + clientReq.httpVersion + " 200 \r\n\r\n",
+                    "utf-8",
+                    () => {
+                        socket.pipe(clientSocket);
+                        clientSocket.pipe(socket);
+                        socket.on("error", (err) => {
+                            console.log("Error on connecting", err);
+                        });
+                        socket.on("close", () => {
+                            console.log("Closing", clientReq.url);
+                        });
+                    }
+                );
+            });
+            proxySocket.on("error", (e) => {
+                console.log("Error on connecting", e);
+                clientSocket.end();
+            });
+            clientSocket.on('error', (e) => { })
+        });
+        server.on('error', (e) => console.log('Proxy error', e))
+        return promise
+    },
+
+
     /**
      * 
      * @param {number} port 
