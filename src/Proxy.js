@@ -46,7 +46,7 @@ const Proxy = {
                 instance = instaceList[0]
             }
             currentIndex += 1
-            // console.log('Proxy', instance)
+            // console.log('Proxy', instance.uri)
             return instance
         }
 
@@ -65,7 +65,7 @@ const Proxy = {
             });
 
             proxy.web(req, res, { target: target, agent: proxyTarget.agent });
-        }).listen(port, () => promise.resolver());  //this is the port your clients will connect to
+        }).listen(port, 'localhost', () => promise.resolver());  //this is the port your clients will connect to
 
 
 
@@ -140,7 +140,7 @@ const Proxy = {
             });
 
             proxy.web(req, res, { target: target, agent: agent });
-        }).listen(port, () => promise.resolver());  //this is the port your clients will connect to
+        }).listen(port,'localhost', () => promise.resolver());  //this is the port your clients will connect to
 
 
 
